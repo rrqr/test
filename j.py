@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import telebot
 
 # Your Telegram bot token
-API_TOKEN = '7823594166:AAG5HvvfOnliCBVKu9VsnzmCgrQb68m91go'
+API_TOKEN = '7697987348:AAEeDSCOM_jGyXG_vKBRdLidZhEBPl5zIbQ'
 
 # Bot setup
 bot = telebot.TeleBot(API_TOKEN)
